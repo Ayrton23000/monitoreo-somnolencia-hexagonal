@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+option csharp_namespace = "Somnolencia.Infrastructure.Grpc";
+
+package ocular;
+
+service OcularClassifier {
+  rpc ClasificarEstadoOcular (FotogramaRequest) returns (PrediccionOcularReply);
+}
+
+message FotogramaRequest {
+  bytes imagen_bytes = 1;
+}
+
+message PrediccionOcularReply {
+  string estado_ocular = 1;
+  double confianza = 2;
+  bool ojos_cerrados = 3;
+}

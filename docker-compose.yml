@@ -1,15 +1,4 @@
-version: '3.9'
 services:
-  postgres_db:
-    image: postgres:16-alpine
-    container_name: somnolencia_postgres
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres_seguro_2026
-      POSTGRES_DB: somnolencia_db
-    ports:
-      - "5432:5432"
   redis_cache:
     image: redis:7-alpine
     container_name: somnolencia_redis
