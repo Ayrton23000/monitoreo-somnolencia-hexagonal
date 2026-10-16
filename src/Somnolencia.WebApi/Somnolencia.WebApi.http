@@ -1,0 +1,6 @@
+@Somnolencia.WebApi_HostAddress = http://localhost:5005
+
+GET {{Somnolencia.WebApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

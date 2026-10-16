@@ -1,0 +1,2 @@
+0 Ojos_Abiertos
+1 Ojos_Cerrados

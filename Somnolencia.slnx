@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Somnolencia.Application/Somnolencia.Application.csproj" />
+    <Project Path="src/Somnolencia.Domain/Somnolencia.Domain.csproj" />
+    <Project Path="src/Somnolencia.Infrastructure/Somnolencia.Infrastructure.csproj" />
+    <Project Path="src/Somnolencia.WebApi/Somnolencia.WebApi.csproj" />
+  </Folder>
+</Solution>
