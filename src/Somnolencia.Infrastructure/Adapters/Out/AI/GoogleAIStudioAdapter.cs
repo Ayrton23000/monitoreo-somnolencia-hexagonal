@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Somnolencia.Application.Ports.Out;
 
 namespace Somnolencia.Infrastructure.Adapters.Out.AI;
@@ -11,13 +12,12 @@ namespace Somnolencia.Infrastructure.Adapters.Out.AI;
 public sealed class GoogleAIStudioAdapter : IAnalizadorSomnolenciaIAPort
 {
     private readonly HttpClient _httpClient;
-    private readonly string _apiKey;
+    private readonly string? _apiKey;
 
-    public GoogleAIStudioAdapter(HttpClient httpClient)
+    public GoogleAIStudioAdapter(HttpClient httpClient, IConfiguration configuration)
     {
         _httpClient = httpClient;
-        _apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-            ?? throw new InvalidOperationException("GEMINI_API_KEY no configurada.");
+        _apiKey = configuration["GEMINI_API_KEY"] ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY");
     }
 
     public async Task<string> AnalizarFotogramaSomnolenciaAsync(
@@ -25,6 +25,11 @@ public sealed class GoogleAIStudioAdapter : IAnalizadorSomnolenciaIAPort
         double duracionCierreMs,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(_apiKey) || _apiKey.Contains("pega_aqui"))
+        {
+            return $"Alerta confirmada por modelo local keras_model.h5 ({duracionCierreMs} ms con ojos cerrados).";
+        }
+
         var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
 
         var payload = new
@@ -45,7 +50,7 @@ public sealed class GoogleAIStudioAdapter : IAnalizadorSomnolenciaIAPort
                         },
                         new
                         {
-                            text = $"El modelo TensorFlow detecto ojos cerrados por {duracionCierreMs} ms. Analiza el rostro y responde en JSON con las claves: nivelFatiga, signosSecundarios y recomendacion."
+                            text = $"El modelo TensorFlow detecto ojos cerrados por {duracionCierreMs} ms. Analiza el rostro y responde brevemente el nivel de fatiga."
                         }
                     }
                 }

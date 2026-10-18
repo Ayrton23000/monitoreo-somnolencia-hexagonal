@@ -1,14 +1,31 @@
+import os
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
 import io
 from concurrent import futures
 import grpc
 import numpy as np
 from PIL import Image, ImageOps
 import tensorflow as tf
+import tf_keras as keras
 import ocular_detector_pb2
 import ocular_detector_pb2_grpc
 
 MODEL_PATH = "models/keras_model.h5"
-model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+LABELS_PATH = "models/labels.txt"
+
+class CompatibleDepthwiseConv2D(keras.layers.DepthwiseConv2D):
+    def __init__(self, **kwargs):
+        kwargs.pop("groups", None)
+        super().__init__(**kwargs)
+
+model = keras.models.load_model(
+    MODEL_PATH,
+    custom_objects={"DepthwiseConv2D": CompatibleDepthwiseConv2D},
+    compile=False
+)
+
+with open(LABELS_PATH, "r", encoding="utf-8") as f:
+    class_names = [line.strip() for line in f.readlines() if line.strip()]
 
 class OcularClassifierServicer(ocular_detector_pb2_grpc.OcularClassifierServicer):
     def ClasificarEstadoOcular(self, request, context):
@@ -23,9 +40,12 @@ class OcularClassifierServicer(ocular_detector_pb2_grpc.OcularClassifierServicer
         prediction = model.predict(data, verbose=0)
         index = int(np.argmax(prediction))
         confidence_score = float(prediction[0][index])
+        raw_label = class_names[index].upper() if index < len(class_names) else str(index)
 
-        ojos_cerrados = index == 1
+        ojos_cerrados = "CERRADO" in raw_label or "CLOSED" in raw_label or index == 1
         estado = "CERRADO" if ojos_cerrados else "ABIERTO"
+
+        print(f"Fotograma procesado -> Clase: {raw_label} | Estado: {estado} | Confianza: {confidence_score:.2f}")
 
         return ocular_detector_pb2.PrediccionOcularReply(
             estado_ocular=estado,

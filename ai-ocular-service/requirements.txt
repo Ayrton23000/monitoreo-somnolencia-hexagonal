@@ -1,0 +1,8 @@
+grpcio==1.84.0
+grpcio-tools==1.84.0
+protobuf==7.36.2
+tensorflow==2.21.0
+tf_keras==2.21.0
+pillow==12.3.0
+numpy==1.26.4
+h5py==3.14.0

@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="es" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoreo de Somnolencia Ocular - Arquitectura Hexagonal</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .video-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+        .guide-box {
+            position: absolute;
+            top: 30%;
+            left: 20%;
+            width: 60%;
+            height: 28%;
+            border: 2px dashed #0dcaf0;
+            border-radius: 8px;
+            pointer-events: none;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+        }
+    </style>
+</head>
+<body class="bg-dark text-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary mb-4">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="#">Monitoreo Ocular (Hexagonal + gRPC)</a>
+            <span id="badgeEstadoServidor" class="badge bg-secondary">En espera</span>
+        </div>
+    </nav>
+
+    <div class="container pb-4">
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="card bg-dark border-secondary shadow">
+                    <div class="card-header border-secondary">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <span class="fw-semibold">Captura Ocular (PC / Celular)</span>
+                            <div>
+                                <button id="btnIniciar" class="btn btn-success btn-sm me-1">Iniciar Camara</button>
+                                <button id="btnDetener" class="btn btn-danger btn-sm" disabled>Detener</button>
+                            </div>
+                        </div>
+                        <div class="row g-2 mt-2">
+                            <div class="col-sm-7">
+                                <select id="selectCamara" class="form-select form-select-sm bg-dark text-light border-secondary">
+                                    <option value="">Camara predeterminada (Frontal)</option>
+                                </select>
+                            </div>
+                            <div class="col-sm-5">
+                                <div class="form-check form-switch mt-1">
+                                    <input class="form-check-input" type="checkbox" id="chkRecorteOjos" checked>
+                                    <label class="form-check-label small" for="chkRecorteOjos">Recortar zona de ojos</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body text-center">
+                        <div class="video-wrapper overflow-hidden rounded border border-secondary bg-black">
+                            <video id="videoCamara" class="w-100 d-block" autoplay playsinline muted></video>
+                            <div id="guiaOjos" class="guide-box"></div>
+                        </div>
+
+                        <div class="mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div class="text-start">
+                                <span class="small text-secondary d-block">Vista previa enviada a keras_model.h5 (224x224):</span>
+                                <canvas id="canvasCaptura" width="224" height="224" class="border border-info rounded mt-1" style="width: 96px; height: 96px;"></canvas>
+                            </div>
+                            <div class="text-end">
+                                <label class="btn btn-outline-info btn-sm mb-0">
+                                    Probar Foto / Camara Celular
+                                    <input type="file" id="inputFotoCelular" accept="image/*" capture="user" class="d-none">
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card bg-dark border-secondary shadow mb-4">
+                    <div class="card-header border-secondary fw-semibold">Telemetria y Diagnostico en Tiempo Real</div>
+                    <div class="card-body">
+                        <h4 id="txtEstadoOcular" class="fw-bold text-info">Estado: Listo para iniciar</h4>
+                        <p class="mb-1">Tiempo continuo con ojos cerrados: <strong id="txtDuracion">0 ms</strong></p>
+                        <div class="alert alert-secondary mt-3 mb-0 small" id="cajaDiagnostico">
+                            Inicia la camara o sube una foto de prueba para verificar la conexion con el servidor gRPC.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card bg-dark border-secondary shadow">
+                    <div class="card-header border-secondary fw-semibold">Historial de Micro-sueños (PostgreSQL 18)</div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-dark table-striped table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Hora</th>
+                                        <th>Severidad</th>
+                                        <th>Duracion</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaHistorial"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const conductorId = "11111111-1111-1111-1111-111111111111";
+        const intervaloMs = 500;
+        let timerMonitoreo = null;
+
+        const video = document.getElementById("videoCamara");
+        const canvas = document.getElementById("canvasCaptura");
+        const ctx = canvas.getContext("2d");
+        const btnIniciar = document.getElementById("btnIniciar");
+        const btnDetener = document.getElementById("btnDetener");
+        const selectCamara = document.getElementById("selectCamara");
+        const chkRecorteOjos = document.getElementById("chkRecorteOjos");
+        const guiaOjos = document.getElementById("guiaOjos");
+        const inputFotoCelular = document.getElementById("inputFotoCelular");
+        const txtEstadoOcular = document.getElementById("txtEstadoOcular");
+        const txtDuracion = document.getElementById("txtDuracion");
+        const cajaDiagnostico = document.getElementById("cajaDiagnostico");
+        const badgeEstado = document.getElementById("badgeEstadoServidor");
+        const tablaHistorial = document.getElementById("tablaHistorial");
+
+        chkRecorteOjos.addEventListener("change", () => {
+            guiaOjos.style.display = chkRecorteOjos.checked ? "block" : "none";
+        });
+
+        async function listarCamaras() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+            const dispositivos = await navigator.mediaDevices.enumerateDevices();
+            const camaras = dispositivos.filter(d => d.kind === "videoinput");
+            selectCamara.innerHTML = '<option value="">Camara predeterminada (Frontal)</option>';
+            camaras.forEach((cam, idx) => {
+                const opt = document.createElement("option");
+                opt.value = cam.deviceId;
+                opt.textContent = cam.label || `Camara ${idx + 1}`;
+                selectCamara.appendChild(opt);
+            });
+        }
+
+        function emitirAlarmaSonora() {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            oscillator.type = "sawtooth";
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+            oscillator.connect(audioCtx.destination);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.4);
+        }
+
+        async function cargarHistorial() {
+            try {
+                const resp = await fetch(`/api/v1/monitoreo/historial/${conductorId}`);
+                if (!resp.ok) return;
+                const datos = await resp.json();
+                tablaHistorial.innerHTML = datos.map(item => `
+                    <tr>
+                        <td>${new Date(item.fechaRegistro).toLocaleTimeString()}</td>
+                        <td><span class="badge bg-danger">${item.nivelSeveridad}</span></td>
+                        <td>${item.duracionCierreMs} ms</td>
+                    </tr>
+                `).join("");
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function procesarBase64EnServidor(base64) {
+            const payload = {
+                conductorId: conductorId,
+                estadoOcularDetectado: "PENDIENTE",
+                duracionCierreMs: intervaloMs,
+                confianzaModeloLocal: 1.0,
+                fotogramaBase64: base64
+            };
+
+            try {
+                const respuesta = await fetch("/api/v1/monitoreo/evaluar", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                const textoRespuesta = await respuesta.text();
+                let jsonRespuesta = null;
+                try {
+                    jsonRespuesta = JSON.parse(textoRespuesta);
+                } catch {
+                    jsonRespuesta = { detalle: textoRespuesta };
+                }
+
+                if (!respuesta.ok) {
+                    txtEstadoOcular.className = "fw-bold text-warning";
+                    txtEstadoOcular.textContent = `Error HTTP ${respuesta.status}`;
+                    cajaDiagnostico.className = "alert alert-warning mt-3 mb-0 small";
+                    cajaDiagnostico.textContent = jsonRespuesta.detalle || jsonRespuesta.mensaje || textoRespuesta;
+                    badgeEstado.className = "badge bg-warning text-dark";
+                    badgeEstado.textContent = "Error en Backend";
+                    return;
+                }
+
+                const info = jsonRespuesta.datos;
+                badgeEstado.className = "badge bg-success";
+                badgeEstado.textContent = "Conectado";
+                txtEstadoOcular.textContent = `Estado: ${info.nivelSeveridad}`;
+                txtDuracion.textContent = `${info.duracionCierreMs} ms`;
+
+                if (info.duracionCierreMs >= 1500) {
+                    txtEstadoOcular.className = "fw-bold text-danger";
+                    cajaDiagnostico.className = "alert alert-danger mt-3 mb-0 small";
+                    cajaDiagnostico.textContent = info.diagnosticoGoogleAI || "Alerta critica de somnolencia detectada.";
+                    emitirAlarmaSonora();
+                    await cargarHistorial();
+                } else {
+                    txtEstadoOcular.className = "fw-bold text-success";
+                    cajaDiagnostico.className = "alert alert-dark border-success mt-3 mb-0 small";
+                    cajaDiagnostico.textContent = `Inferencia gRPC completada correctamente (${new Date().toLocaleTimeString()}).`;
+                }
+            } catch (errorRed) {
+                txtEstadoOcular.className = "fw-bold text-danger";
+                txtEstadoOcular.textContent = "Error de Red";
+                cajaDiagnostico.className = "alert alert-danger mt-3 mb-0 small";
+                cajaDiagnostico.textContent = `No se pudo conectar con la API: ${errorRed.message}`;
+            }
+        }
+
+        async function enviarFotogramaCamara() {
+            if (!video.videoWidth || !video.videoHeight) return;
+
+            if (chkRecorteOjos.checked) {
+                const sx = video.videoWidth * 0.20;
+                const sy = video.videoHeight * 0.30;
+                const sw = video.videoWidth * 0.60;
+                const sh = video.videoHeight * 0.28;
+                ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            }
+
+            const base64 = canvas.toDataURL("image/jpeg", 0.85);
+            await procesarBase64EnServidor(base64);
+        }
+
+        inputFotoCelular.addEventListener("change", (e) => {
+            const archivo = e.target.files[0];
+            if (!archivo) return;
+            const img = new Image();
+            img.onload = async () => {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                const base64 = canvas.toDataURL("image/jpeg", 0.85);
+                txtEstadoOcular.textContent = "Procesando imagen...";
+                await procesarBase64EnServidor(base64);
+            };
+            img.src = URL.createObjectURL(archivo);
+        });
+
+        btnIniciar.addEventListener("click", async () => {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                txtEstadoOcular.className = "fw-bold text-warning";
+                txtEstadoOcular.textContent = "Camara bloqueada por HTTP";
+                cajaDiagnostico.className = "alert alert-warning mt-3 mb-0 small";
+                cajaDiagnostico.textContent = "En celulares debes entrar con HTTPS (https://TU_IP:5001) o usar el boton 'Probar Foto / Camara Celular'.";
+                return;
+            }
+
+            try {
+                const constraints = selectCamara.value
+                    ? { video: { deviceId: { exact: selectCamara.value } } }
+                    : { video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } };
+
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                await listarCamaras();
+
+                btnIniciar.disabled = true;
+                btnDetener.disabled = false;
+                badgeEstado.className = "badge bg-info text-dark";
+                badgeEstado.textContent = "Iniciando...";
+                txtEstadoOcular.textContent = "Analizando fotogramas...";
+
+                await cargarHistorial();
+                timerMonitoreo = setInterval(enviarFotogramaCamara, intervaloMs);
+            } catch (errCamara) {
+                txtEstadoOcular.className = "fw-bold text-danger";
+                txtEstadoOcular.textContent = "No se pudo abrir la camara";
+                cajaDiagnostico.className = "alert alert-danger mt-3 mb-0 small";
+                cajaDiagnostico.textContent = `Detalle del navegador: ${errCamara.message}`;
+            }
+        });
+
+        btnDetener.addEventListener("click", () => {
+            clearInterval(timerMonitoreo);
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(t => t.stop());
+            }
+            btnIniciar.disabled = false;
+            btnDetener.disabled = true;
+            badgeEstado.className = "badge bg-secondary";
+            badgeEstado.textContent = "Detenido";
+        });
+
+        listarCamaras();
+    </script>
+</body>
+</html>
