@@ -59,9 +59,25 @@ public sealed class ProcesarFotogramaUseCase : IProcesarFotogramaUseCase
 
         var inferencia = await _detectorOcular.ClasificarFotogramaAsync(imagenBytes, cancellationToken);
 
+        bool ojosCerradosConfirmados;
+        if (entrada.EstadoOcularDetectado == "ABIERTO_PARPADO")
+        {
+            ojosCerradosConfirmados = false;
+        }
+        else if (entrada.EstadoOcularDetectado == "CERRADO_PARPADO")
+        {
+            ojosCerradosConfirmados = true;
+        }
+        else
+        {
+            ojosCerradosConfirmados = inferencia.OjosCerrados;
+        }
+
+        string etiquetaEstado = ojosCerradosConfirmados ? "CERRADO" : "ABIERTO";
+
         var duracionAcumuladaMs = await _cache.ActualizarDuracionOjosCerradosAsync(
             entrada.ConductorId,
-            inferencia.OjosCerrados,
+            ojosCerradosConfirmados,
             entrada.DuracionCierreMs,
             cancellationToken
         );
@@ -99,7 +115,7 @@ public sealed class ProcesarFotogramaUseCase : IProcesarFotogramaUseCase
         return new AlertaSomnolenciaRespuestaDto(
             evento.Id,
             evento.ConductorId,
-            $"{inferencia.EstadoOcular} - {evento.NivelSeveridad}",
+            $"{etiquetaEstado} - {evento.NivelSeveridad}",
             duracionAcumuladaMs,
             evento.DiagnosticoContextualIA,
             evento.FechaRegistro
