@@ -13,8 +13,30 @@ public interface IProcesarFotogramaUseCase
         CancellationToken cancellationToken = default
     );
 
-    Task<IReadOnlyList<AlertaSomnolenciaRespuestaDto>> ObtenerHistorialCriticoAsync(
+    Task<IReadOnlyList<AlertaSomnolenciaRespuestaDto>> ObtenerHistorialConductorAsync(
         Guid conductorId,
+        CancellationToken cancellationToken = default
+    );
+
+    Task<IReadOnlyList<AlertaSomnolenciaRespuestaDto>> ObtenerHistorialGlobalAdminAsync(
+        string? filtroConductor = null,
+        string? filtroSeveridad = null,
+        int? horaInicio = null,
+        int? horaFin = null,
+        CancellationToken cancellationToken = default
+    );
+
+    Task<bool> EliminarRegistroAdminAsync(
+        Guid eventoId,
+        string usuarioAdmin,
+        CancellationToken cancellationToken = default
+    );
+
+    Task<DashboardAdminDto> ObtenerDashboardAdminAsync(
+        CancellationToken cancellationToken = default
+    );
+
+    Task<IReadOnlyList<AuditLogDto>> ObtenerAuditLogsAdminAsync(
         CancellationToken cancellationToken = default
     );
 }

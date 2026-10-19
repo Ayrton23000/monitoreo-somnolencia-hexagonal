@@ -11,6 +11,8 @@ public sealed class SomnolenciaDbContext : DbContext
     public DbSet<EventoFatiga> EventosFatiga => Set<EventoFatiga>();
     public DbSet<EventoCierreOcular> EventosCierreOcular => Set<EventoCierreOcular>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<Usuario> Usuarios => Set<Usuario>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     public SomnolenciaDbContext(DbContextOptions<SomnolenciaDbContext> options) : base(options)
     {
@@ -40,6 +42,19 @@ public sealed class SomnolenciaDbContext : DbContext
             entity.HasKey(o => o.Id);
         });
 
+        modelBuilder.Entity<Usuario>(entity =>
+        {
+            entity.ToTable("usuarios");
+            entity.HasKey(u => u.Id);
+            entity.HasIndex(u => u.Username).IsUnique();
+        });
+
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.ToTable("audit_logs");
+            entity.HasKey(a => a.Id);
+        });
+
         base.OnModelCreating(modelBuilder);
     }
 
@@ -49,7 +64,7 @@ public sealed class SomnolenciaDbContext : DbContext
         {
             if (entry.State == EntityState.Added || entry.State == EntityState.Modified)
             {
-                entry.Property("FechaActualizacion").CurrentValue = DateTime.UtcNow;
+                entry.Property("FechaActualizacion").CurrentValue = DateTime.Now;
             }
         }
 

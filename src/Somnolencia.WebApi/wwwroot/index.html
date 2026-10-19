@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monitoreo de Somnolencia Ocular - Arquitectura Hexagonal</title>
+    <title>Monitoreo Nocturno de Somnolencia - Arquitectura Hexagonal</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <style>
         .video-wrapper {
             position: relative;
@@ -19,95 +20,396 @@
             height: 100%;
             pointer-events: none;
         }
+        .night-vision {
+            filter: brightness(1.45) contrast(1.25);
+        }
     </style>
 </head>
 <body class="bg-dark text-light">
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary mb-4">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="#">Monitoreo Ocular en Tiempo Real</a>
-            <span id="badgeEstadoServidor" class="badge bg-secondary">Listo</span>
+            <a class="navbar-brand fw-bold" href="#">Detector Nocturno de Somnolencia (EAR + MAR)</a>
+            <div class="d-flex align-items-center gap-3">
+                <span id="txtUsuarioActivo" class="badge bg-info text-dark">Sin sesion</span>
+                <span id="badgeEstadoServidor" class="badge bg-secondary">Listo</span>
+                <button id="btnCerrarSesion" class="btn btn-outline-light btn-sm d-none">Cerrar Sesion</button>
+            </div>
         </div>
     </nav>
 
-    <div class="container pb-4">
-        <div class="row g-4">
-            <div class="col-lg-6">
+    <div class="container pb-5">
+        <div id="panelLogin" class="row justify-content-center my-5">
+            <div class="col-md-5 col-lg-4">
                 <div class="card bg-dark border-secondary shadow">
-                    <div class="card-header border-secondary">
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                            <span class="fw-semibold">Seguimiento Ocular en Vivo</span>
-                            <div>
-                                <button id="btnIniciar" class="btn btn-success btn-sm me-1">Iniciar Camara</button>
-                                <button id="btnCalibrar" class="btn btn-info btn-sm me-1 text-dark fw-semibold" disabled>Calibrar Ojo Normal</button>
-                                <button id="btnDetener" class="btn btn-danger btn-sm" disabled>Detener</button>
+                    <div class="card-header border-secondary fw-bold text-info text-center">
+                        Iniciar Sesion
+                    </div>
+                    <div class="card-body p-4">
+                        <form id="formLogin">
+                            <div class="mb-3">
+                                <label class="form-label small fw-semibold" for="inputUser">Usuario</label>
+                                <input type="text" id="inputUser" class="form-control bg-dark text-light border-secondary" placeholder="Ingrese su usuario" required autocomplete="username">
                             </div>
-                        </div>
-                        <div class="row g-2 mt-2">
-                            <div class="col-sm-6">
-                                <select id="selectCamara" class="form-select form-select-sm bg-dark text-light border-secondary">
-                                    <option value="">Camara Frontal (Predeterminada)</option>
-                                </select>
+                            <div class="mb-4">
+                                <label class="form-label small fw-semibold" for="inputPass">Contraseña</label>
+                                <input type="password" id="inputPass" class="form-control bg-dark text-light border-secondary" placeholder="Ingrese su contraseña" required autocomplete="current-password">
                             </div>
-                            <div class="col-sm-6">
-                                <select id="selectModoRecorte" class="form-select form-select-sm bg-dark text-info border-secondary">
-                                    <option value="ojo_derecho">Seguir Un Solo Ojo (Cuadrado 1:1)</option>
-                                    <option value="ambos_ojos">Seguir Ambos Ojos (Cuadrado 1:1)</option>
-                                    <option value="rostro">Seguir Rostro Completo</option>
-                                </select>
+                            <button type="submit" id="btnLogin" class="btn btn-info w-100 fw-bold text-dark">Ingresar</button>
+                            <div id="alertaLogin" class="alert alert-danger mt-3 mb-0 small d-none text-center">
+                                Usuario o contraseña incorrectos en la base de datos.
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="panelPrincipal" class="d-none">
+            <ul class="nav nav-tabs border-secondary mb-4">
+                <li class="nav-item">
+                    <button class="nav-link active text-info fw-semibold" id="tabMonitoreoBtn">Cabina de Monitoreo Nocturno</button>
+                </li>
+                <li class="nav-item d-none" id="itemTabAdmin">
+                    <button class="nav-link text-warning fw-semibold" id="tabAdminBtn">Dashboard Administrador y Consultas</button>
+                </li>
+            </ul>
+
+            <div id="vistaMonitoreo">
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        <div class="card bg-dark border-secondary shadow">
+                            <div class="card-header border-secondary">
+                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                    <span class="fw-semibold">Seguimiento de Rostro Completo (EAR + MAR)</span>
+                                    <div>
+                                        <button id="btnIniciar" class="btn btn-success btn-sm me-1">Iniciar Camara</button>
+                                        <button id="btnCalibrar" class="btn btn-info btn-sm me-1 text-dark fw-semibold" disabled>Calibrar Ojo Normal</button>
+                                        <button id="btnDetener" class="btn btn-danger btn-sm" disabled>Detener</button>
+                                    </div>
+                                </div>
+                                <div class="row g-2 mt-2 align-items-center">
+                                    <div class="col-sm-7">
+                                        <select id="selectCamara" class="form-select form-select-sm bg-dark text-light border-secondary">
+                                            <option value="">Camara Frontal (Predeterminada)</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-sm-5">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="chkLuzNocturna" checked>
+                                            <label class="form-check-label small text-info" for="chkLuzNocturna">Adaptacion Luz Nocturna</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body text-center">
+                                <div class="video-wrapper overflow-hidden rounded border border-secondary bg-black">
+                                    <video id="videoCamara" class="w-100 d-block night-vision" autoplay playsinline muted></video>
+                                    <canvas id="canvasOverlay"></canvas>
+                                </div>
+
+                                <div class="row g-2 mt-3 text-start">
+                                    <div class="col-4">
+                                        <div class="p-2 rounded border border-secondary bg-black">
+                                            <span class="small text-secondary d-block">Ojos (EAR)</span>
+                                            <strong id="txtEarActual" class="text-info fs-5">0.00</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="p-2 rounded border border-secondary bg-black">
+                                            <span class="small text-secondary d-block">Boca (MAR)</span>
+                                            <strong id="txtMarActual" class="text-warning fs-5">0.00</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="p-2 rounded border border-secondary bg-black">
+                                            <span class="small text-secondary d-block">Closed Score</span>
+                                            <strong id="txtScoreActual" class="text-danger fs-5">0</strong>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-3 p-2 rounded border border-secondary bg-black text-start">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="small text-light">Sensibilidad de cierre ocular (Umbral EAR):</span>
+                                        <strong id="txtUmbralValor" class="text-warning small">0.19</strong>
+                                    </div>
+                                    <input type="range" class="form-range" id="sliderUmbral" min="0.10" max="0.32" step="0.01" value="0.19">
+                                </div>
+
+                                <div class="mt-3 d-flex justify-content-start align-items-center gap-3">
+                                    <canvas id="canvasCaptura" width="224" height="224" class="border border-info rounded" style="width: 84px; height: 84px;"></canvas>
+                                    <div class="text-start">
+                                        <span class="small text-info fw-semibold d-block">Rostro Completo Normalizado (224x224)</span>
+                                        <span id="txtRastreo" class="small text-secondary d-block">Esperando inicio de camara...</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="card-body text-center">
-                        <div class="video-wrapper overflow-hidden rounded border border-secondary bg-black">
-                            <video id="videoCamara" class="w-100 d-block" autoplay playsinline muted></video>
-                            <canvas id="canvasOverlay"></canvas>
-                        </div>
 
-                        <div class="mt-3 p-2 rounded border border-secondary bg-black text-start">
-                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                <span class="small text-light">Apertura actual del parpado (EAR): <strong id="txtEarActual" class="text-info">0.00</strong></span>
-                                <span class="small text-secondary">Umbral cierre: <strong id="txtUmbralValor" class="text-warning">0.19</strong></span>
+                    <div class="col-lg-6">
+                        <div class="card bg-dark border-secondary shadow mb-4">
+                            <div class="card-header border-secondary fw-semibold">Estado de Alerta en Conduccion Nocturna</div>
+                            <div class="card-body">
+                                <h4 id="txtEstadoOcular" class="fw-bold text-info">Estado: Listo para iniciar</h4>
+                                <div class="d-flex justify-content-between mt-2">
+                                    <span>Micro-sueño continuo: <strong id="txtDuracion" class="text-light">0 ms</strong></span>
+                                    <span>Bostezo continuo: <strong id="txtDuracionBostezo" class="text-warning">0 ms</strong></span>
+                                </div>
+                                <div class="alert alert-secondary mt-3 mb-0 small" id="cajaDiagnostico">
+                                    El sistema monitorea el rostro completo, cierre ocular y bostezos mayores a 2 segundos.
+                                </div>
                             </div>
-                            <input type="range" class="form-range" id="sliderUmbral" min="0.10" max="0.32" step="0.01" value="0.19">
-                            <small class="text-secondary d-block">Mira de forma relajada y pulsa "Calibrar Ojo Normal" para ajustar el sensor a tus ojos.</small>
                         </div>
 
-                        <div class="mt-3 d-flex justify-content-start align-items-center gap-3">
-                            <canvas id="canvasCaptura" width="224" height="224" class="border border-info rounded" style="width: 96px; height: 96px;"></canvas>
-                            <div class="text-start">
-                                <span class="small text-info fw-semibold d-block">Recorte automatico de ojos (224x224)</span>
-                                <span id="txtRastreo" class="small text-secondary d-block">Esperando inicio de camara...</span>
+                        <div class="card bg-dark border-secondary shadow">
+                            <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+                                <span class="fw-semibold">Mi Historial Personal de Somnolencia (Solo Lectura)</span>
+                                <span class="badge bg-secondary">Sin permiso de borrado</span>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive" style="max-height: 320px;">
+                                    <table class="table table-dark table-striped table-hover mb-0 small">
+                                        <thead>
+                                            <tr>
+                                                <th>Fecha y Hora</th>
+                                                <th>Severidad</th>
+                                                <th>Duracion</th>
+                                                <th>Score</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tablaHistorialConductor"></tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="col-lg-6">
+            <div id="vistaAdmin" class="d-none">
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4">
+                        <div class="card bg-dark border-danger shadow h-100">
+                            <div class="card-body">
+                                <span class="small text-secondary text-uppercase">Consulta: Trabajador con Mas Somnolencia</span>
+                                <h4 id="kpiTrabajadorCritico" class="fw-bold text-danger mt-1 mb-1">-</h4>
+                                <small id="kpiDetalleTrabajador" class="text-light">0 incidentes registrados</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-dark border-warning shadow h-100">
+                            <div class="card-body">
+                                <span class="small text-secondary text-uppercase">Consulta: Momento del Dia con Mas Sueño</span>
+                                <h4 id="kpiFranjaCritica" class="fw-bold text-warning mt-1 mb-1">-</h4>
+                                <small class="text-light">Hora pico de micro-sueños en la flota</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-dark border-info shadow h-100">
+                            <div class="card-body">
+                                <span class="small text-secondary text-uppercase">Total Micro-sueños Activos en BD</span>
+                                <h4 id="kpiTotalIncidentes" class="fw-bold text-info mt-1 mb-1">0</h4>
+                                <small class="text-light">Almacenados en PostgreSQL 18 (somnolencia_db)</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-4 mb-4">
+                    <div class="col-lg-6">
+                        <div class="card bg-dark border-secondary shadow h-100">
+                            <div class="card-header border-secondary fw-semibold text-info">
+                                Momento del Dia en que Conducen con Mas Sueño (00:00 - 23:00)
+                            </div>
+                            <div class="card-body">
+                                <canvas id="chartPorHora" height="210"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="card bg-dark border-secondary shadow h-100">
+                            <div class="card-header border-secondary fw-semibold text-warning">
+                                Promedio de Somnolencia por Cada Trabajador (ms)
+                            </div>
+                            <div class="card-body">
+                                <canvas id="chartPorTrabajador" height="210"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card bg-dark border-secondary shadow mb-4">
-                    <div class="card-header border-secondary fw-semibold">Telemetria y Diagnostico en Tiempo Real</div>
+                    <div class="card-header border-secondary fw-semibold text-info">
+                        Registrar Nuevo Conductor o Administrador en PostgreSQL 18
+                    </div>
                     <div class="card-body">
-                        <h4 id="txtEstadoOcular" class="fw-bold text-info">Estado: Listo para iniciar</h4>
-                        <p class="mb-1">Tiempo continuo con ojos cerrados: <strong id="txtDuracion">0 ms</strong></p>
-                        <div class="alert alert-secondary mt-3 mb-0 small" id="cajaDiagnostico">
-                            Pulsa "Iniciar Camara" para comenzar la deteccion ocular en tiempo real.
+                        <form id="formNuevoUsuario" class="row g-2 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1">Usuario (Login)</label>
+                                <input type="text" id="nuevoUsername" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="Ej: conductor4" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Nombre Completo del Trabajador</label>
+                                <input type="text" id="nuevoNombre" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="Ej: Luis Paredes (Ruta Sur)" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small mb-1">Contraseña</label>
+                                <input type="password" id="nuevoPassword" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="Contraseña" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small mb-1">Rol</label>
+                                <select id="nuevoRol" class="form-select form-select-sm bg-dark text-light border-secondary">
+                                    <option value="Conductor">Conductor</option>
+                                    <option value="Administrador">Administrador</option>
+                                </select>
+                            </div>
+                            <div class="col-md-1">
+                                <button type="submit" class="btn btn-success btn-sm w-100 fw-semibold">Guardar</button>
+                            </div>
+                        </form>
+                        <div id="msgNuevoUsuario" class="small mt-2 d-none"></div>
+                    </div>
+                </div>
+
+                <div class="row g-4 mb-4">
+                    <div class="col-lg-7">
+                        <div class="card bg-dark border-secondary shadow h-100">
+                            <div class="card-header border-secondary fw-semibold">Ranking y Promedios por Trabajador</div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-bordered mb-0 small">
+                                        <thead>
+                                            <tr>
+                                                <th>Trabajador</th>
+                                                <th>Total Alertas</th>
+                                                <th>Promedio (ms)</th>
+                                                <th>Maximo Cierre (ms)</th>
+                                                <th>Promedio Score</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tablaResumenTrabajadores"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-5">
+                        <div class="card bg-dark border-secondary shadow h-100">
+                            <div class="card-header border-secondary fw-semibold text-success">
+                                Metricas de Validacion del Modelo (API v2 - Tomas et al.)
+                            </div>
+                            <div class="card-body small">
+                                <div class="row text-center mb-3">
+                                    <div class="col-4">
+                                        <div class="p-2 border border-secondary rounded bg-black">
+                                            <span class="text-secondary d-block">Accuracy</span>
+                                            <strong id="valAccuracy" class="text-info fs-6">89.9%</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="p-2 border border-secondary rounded bg-black">
+                                            <span class="text-secondary d-block">Precision</span>
+                                            <strong id="valPrecision" class="text-success fs-6">91.8%</strong>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="p-2 border border-secondary rounded bg-black">
+                                            <span class="text-secondary d-block">Recall</span>
+                                            <strong id="valRecall" class="text-warning fs-6">91.2%</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                                <table class="table table-dark table-sm table-bordered text-center mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Matriz de Confusion (N=316)</th>
+                                            <th>Predicho: Despierto (0)</th>
+                                            <th>Predicho: Somnoliento (1)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <th>Real: Despierto (0)</th>
+                                            <td class="text-info fw-bold" id="valTN">135 (TN)</td>
+                                            <td class="text-success fw-bold" id="valFP">0 (FP)</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Real: Somnoliento (1)</th>
+                                            <td class="text-warning" id="valFN">32 (FN)</td>
+                                            <td class="text-danger fw-bold" id="valTP">149 (TP)</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card bg-dark border-secondary shadow mb-4">
+                    <div class="card-header border-secondary">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                            <span class="fw-semibold text-danger">Buscador y Control de Historial Global (Exclusivo Administrador)</span>
+                            <div>
+                                <button id="btnFiltroMadrugada" class="btn btn-outline-warning btn-sm me-1">Solo Madrugada (22:00 - 06:00)</button>
+                                <button id="btnLimpiarFiltros" class="btn btn-outline-light btn-sm">Ver Todos</button>
+                            </div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-5">
+                                <input type="text" id="inputFiltroConductor" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="Filtrar por nombre del trabajador...">
+                            </div>
+                            <div class="col-md-4">
+                                <select id="selectFiltroSeveridad" class="form-select form-select-sm bg-dark text-light border-secondary">
+                                    <option value="">Todas las severidades</option>
+                                    <option value="CRITICO_MICROSUEÑO">CRITICO_MICROSUEÑO</option>
+                                    <option value="NIVEL_1_SOMNOLENCIA">NIVEL_1_SOMNOLENCIA</option>
+                                    <option value="ALERTA_BOSTEZO_PROLONGADO">ALERTA_BOSTEZO_PROLONGADO</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <button id="btnAplicarFiltro" class="btn btn-info btn-sm w-100 text-dark fw-semibold">Ejecutar Consulta</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive" style="max-height: 360px;">
+                            <table class="table table-dark table-striped table-hover mb-0 small align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Trabajador</th>
+                                        <th>Fecha y Hora</th>
+                                        <th>Severidad</th>
+                                        <th>Duracion</th>
+                                        <th>EAR / MAR</th>
+                                        <th>Score</th>
+                                        <th class="text-end">Accion Admin</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaHistorialGlobalAdmin"></tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
 
                 <div class="card bg-dark border-secondary shadow">
-                    <div class="card-header border-secondary fw-semibold">Historial de Micro-sueños (PostgreSQL 18)</div>
+                    <div class="card-header border-secondary fw-semibold text-secondary">
+                        Registro de Auditoria de Seguridad (Audit Logs - Eliminaciones y Acciones Criticas)
+                    </div>
                     <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-dark table-striped table-hover mb-0">
+                        <div class="table-responsive" style="max-height: 200px;">
+                            <table class="table table-dark table-sm mb-0 small">
                                 <thead>
                                     <tr>
-                                        <th>Hora</th>
-                                        <th>Severidad</th>
-                                        <th>Duracion</th>
+                                        <th>Fecha</th>
+                                        <th>Usuario</th>
+                                        <th>Accion</th>
+                                        <th>Detalle</th>
                                     </tr>
                                 </thead>
-                                <tbody id="tablaHistorial"></tbody>
+                                <tbody id="tablaAuditLogs"></tbody>
                             </table>
                         </div>
                     </div>
@@ -123,13 +425,33 @@
             window.location.href = `https://${window.location.hostname}:5001`;
         }
 
-        const conductorId = "11111111-1111-1111-1111-111111111111";
+        let sesionActual = null;
         const intervaloMs = 500;
         let timerMonitoreo = null;
         let animationFrameId = null;
         let faceLandmarker = null;
-        let ultimaCajaRecorte = null;
+        let rostroDetectado = false;
         let earPromedioActual = 0.25;
+        let marActual = 0.10;
+        let duracionBostezoMs = 0;
+        let closedScore = 0;
+        let chartHoraInstance = null;
+        let chartTrabajadorInstance = null;
+
+        const panelLogin = document.getElementById("panelLogin");
+        const panelPrincipal = document.getElementById("panelPrincipal");
+        const formLogin = document.getElementById("formLogin");
+        const inputUser = document.getElementById("inputUser");
+        const inputPass = document.getElementById("inputPass");
+        const btnCerrarSesion = document.getElementById("btnCerrarSesion");
+        const alertaLogin = document.getElementById("alertaLogin");
+        const txtUsuarioActivo = document.getElementById("txtUsuarioActivo");
+
+        const itemTabAdmin = document.getElementById("itemTabAdmin");
+        const tabMonitoreoBtn = document.getElementById("tabMonitoreoBtn");
+        const tabAdminBtn = document.getElementById("tabAdminBtn");
+        const vistaMonitoreo = document.getElementById("vistaMonitoreo");
+        const vistaAdmin = document.getElementById("vistaAdmin");
 
         const video = document.getElementById("videoCamara");
         const canvasOverlay = document.getElementById("canvasOverlay");
@@ -141,22 +463,148 @@
         const btnCalibrar = document.getElementById("btnCalibrar");
         const btnDetener = document.getElementById("btnDetener");
         const selectCamara = document.getElementById("selectCamara");
-        const selectModoRecorte = document.getElementById("selectModoRecorte");
+        const chkLuzNocturna = document.getElementById("chkLuzNocturna");
         const sliderUmbral = document.getElementById("sliderUmbral");
         const txtEarActual = document.getElementById("txtEarActual");
+        const txtMarActual = document.getElementById("txtMarActual");
+        const txtScoreActual = document.getElementById("txtScoreActual");
         const txtUmbralValor = document.getElementById("txtUmbralValor");
         const txtEstadoOcular = document.getElementById("txtEstadoOcular");
         const txtDuracion = document.getElementById("txtDuracion");
+        const txtDuracionBostezo = document.getElementById("txtDuracionBostezo");
         const txtRastreo = document.getElementById("txtRastreo");
         const cajaDiagnostico = document.getElementById("cajaDiagnostico");
         const badgeEstado = document.getElementById("badgeEstadoServidor");
-        const tablaHistorial = document.getElementById("tablaHistorial");
+        const tablaHistorialConductor = document.getElementById("tablaHistorialConductor");
+        const tablaHistorialGlobalAdmin = document.getElementById("tablaHistorialGlobalAdmin");
+        const tablaResumenTrabajadores = document.getElementById("tablaResumenTrabajadores");
+        const tablaAuditLogs = document.getElementById("tablaAuditLogs");
+
+        const formNuevoUsuario = document.getElementById("formNuevoUsuario");
+        const msgNuevoUsuario = document.getElementById("msgNuevoUsuario");
+
+        const inputFiltroConductor = document.getElementById("inputFiltroConductor");
+        const selectFiltroSeveridad = document.getElementById("selectFiltroSeveridad");
+        const btnAplicarFiltro = document.getElementById("btnAplicarFiltro");
+        const btnFiltroMadrugada = document.getElementById("btnFiltroMadrugada");
+        const btnLimpiarFiltros = document.getElementById("btnLimpiarFiltros");
 
         const indicesOjoIzquierdo = [33, 133, 159, 145, 153, 154, 155, 157, 158, 160, 161, 163, 246];
         const indicesOjoDerecho = [362, 263, 386, 374, 380, 381, 382, 384, 385, 387, 388, 390, 466];
+        const indicesBoca = [61, 291, 13, 14, 78, 308, 82, 312, 87, 317];
+
+        chkLuzNocturna.addEventListener("change", () => {
+            video.classList.toggle("night-vision", chkLuzNocturna.checked);
+        });
 
         sliderUmbral.addEventListener("input", () => {
             txtUmbralValor.textContent = parseFloat(sliderUmbral.value).toFixed(2);
+        });
+
+        formLogin.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            alertaLogin.classList.add("d-none");
+            const resp = await fetch("/api/v1/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username: inputUser.value.trim(), password: inputPass.value })
+            });
+
+            if (!resp.ok) {
+                alertaLogin.classList.remove("d-none");
+                return;
+            }
+
+            sesionActual = await resp.json();
+            inputPass.value = "";
+            panelLogin.classList.add("d-none");
+            panelPrincipal.classList.remove("d-none");
+            btnCerrarSesion.classList.remove("d-none");
+            txtUsuarioActivo.textContent = `${sesionActual.nombreCompleto} (${sesionActual.rol})`;
+
+            if (sesionActual.rol === "Administrador") {
+                itemTabAdmin.classList.remove("d-none");
+                await mostrarTabAdmin();
+            } else {
+                itemTabAdmin.classList.add("d-none");
+                mostrarTabMonitoreo();
+            }
+
+            await cargarHistorialPersonal();
+        });
+
+        formNuevoUsuario.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            if (!sesionActual || sesionActual.rol !== "Administrador") return;
+
+            const payload = {
+                username: document.getElementById("nuevoUsername").value.trim(),
+                nombreCompleto: document.getElementById("nuevoNombre").value.trim(),
+                password: document.getElementById("nuevoPassword").value,
+                rol: document.getElementById("nuevoRol").value
+            };
+
+            const resp = await fetch("/api/v1/admin/usuarios", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${sesionActual.token}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            msgNuevoUsuario.classList.remove("d-none");
+            if (resp.ok) {
+                msgNuevoUsuario.className = "small mt-2 text-success fw-semibold";
+                msgNuevoUsuario.textContent = `Usuario '${payload.username}' guardado en PostgreSQL 18 correctamente.`;
+                formNuevoUsuario.reset();
+                await cargarDatosAdmin();
+            } else {
+                const err = await resp.json();
+                msgNuevoUsuario.className = "small mt-2 text-danger fw-semibold";
+                msgNuevoUsuario.textContent = err.mensaje || "No se pudo registrar el usuario.";
+            }
+        });
+
+        btnCerrarSesion.addEventListener("click", () => {
+            btnDetener.click();
+            sesionActual = null;
+            panelPrincipal.classList.add("d-none");
+            panelLogin.classList.remove("d-none");
+            btnCerrarSesion.classList.add("d-none");
+            txtUsuarioActivo.textContent = "Sin sesion";
+        });
+
+        function mostrarTabMonitoreo() {
+            tabMonitoreoBtn.classList.add("active");
+            tabAdminBtn.classList.remove("active");
+            vistaMonitoreo.classList.remove("d-none");
+            vistaAdmin.classList.add("d-none");
+        }
+
+        async function mostrarTabAdmin() {
+            tabAdminBtn.classList.add("active");
+            tabMonitoreoBtn.classList.remove("active");
+            vistaAdmin.classList.remove("d-none");
+            vistaMonitoreo.classList.add("d-none");
+            await cargarDatosAdmin();
+        }
+
+        tabMonitoreoBtn.addEventListener("click", mostrarTabMonitoreo);
+        tabAdminBtn.addEventListener("click", mostrarTabAdmin);
+
+        btnAplicarFiltro.addEventListener("click", () => {
+            cargarHistorialFiltradoAdmin(inputFiltroConductor.value, selectFiltroSeveridad.value, null, null);
+        });
+
+        btnFiltroMadrugada.addEventListener("click", () => {
+            cargarHistorialFiltradoAdmin(inputFiltroConductor.value, selectFiltroSeveridad.value, 22, 6);
+        });
+
+        btnLimpiarFiltros.addEventListener("click", () => {
+            inputFiltroConductor.value = "";
+            selectFiltroSeveridad.value = "";
+            cargarDatosAdmin();
         });
 
         btnCalibrar.addEventListener("click", () => {
@@ -165,7 +613,7 @@
                 sliderUmbral.value = nuevoUmbral;
                 txtUmbralValor.textContent = nuevoUmbral.toFixed(2);
                 cajaDiagnostico.className = "alert alert-info mt-3 mb-0 small";
-                cajaDiagnostico.textContent = `Ojo normal calibrado en ${earPromedioActual.toFixed(2)}. Solo marcara CERRADO cuando baje de ${nuevoUmbral.toFixed(2)}.`;
+                cajaDiagnostico.textContent = `Ojo calibrado en ${earPromedioActual.toFixed(2)}. Umbral ajustado a ${nuevoUmbral.toFixed(2)}.`;
             }
         });
 
@@ -185,6 +633,14 @@
             const earDer = (vDer1 + vDer2) / (2.0 * hDer);
 
             return (earIzq + earDer) / 2.0;
+        }
+
+        function calcularMAR(lm) {
+            const v1 = distancia(lm[13], lm[14]);
+            const v2 = distancia(lm[82], lm[87]);
+            const v3 = distancia(lm[312], lm[317]);
+            const h = distancia(lm[61], lm[291]);
+            return (v1 + v2 + v3) / (3.0 * h);
         }
 
         function calcularCajaCuadrada(puntos, indices, anchoVideo, altoVideo, factorEscala) {
@@ -242,7 +698,7 @@
             }
         }
 
-        function bucleSeguimientoOcular() {
+        function bucleSeguimientoRostroCompleto() {
             if (video.readyState >= 2 && video.videoWidth > 0 && faceLandmarker) {
                 canvasOverlay.width = video.videoWidth;
                 canvasOverlay.height = video.videoHeight;
@@ -251,88 +707,71 @@
                 const resultados = faceLandmarker.detectForVideo(video, performance.now());
 
                 if (resultados.faceLandmarks && resultados.faceLandmarks.length > 0) {
+                    rostroDetectado = true;
                     const lm = resultados.faceLandmarks[0];
                     const vw = video.videoWidth;
                     const vh = video.videoHeight;
 
                     earPromedioActual = calcularEAR(lm);
+                    marActual = calcularMAR(lm);
                     txtEarActual.textContent = earPromedioActual.toFixed(2);
-                    const umbral = parseFloat(sliderUmbral.value);
-                    const cerradoPorParpado = earPromedioActual < umbral;
+                    txtMarActual.textContent = marActual.toFixed(2);
 
-                    const cajaIzq = calcularCajaCuadrada(lm, indicesOjoIzquierdo, vw, vh, 1.8);
-                    const cajaDer = calcularCajaCuadrada(lm, indicesOjoDerecho, vw, vh, 1.8);
-                    const cajaAmbos = calcularCajaCuadrada(lm, [...indicesOjoIzquierdo, ...indicesOjoDerecho], vw, vh, 1.3);
+                    const umbralEar = parseFloat(sliderUmbral.value);
+                    const cerradoPorParpado = earPromedioActual < umbralEar;
+                    const bostezando = marActual >= 0.60;
+
                     const todosIndices = lm.map((_, idx) => idx);
                     const cajaRostro = calcularCajaCuadrada(lm, todosIndices, vw, vh, 1.15);
+                    const cajaIzq = calcularCajaCuadrada(lm, indicesOjoIzquierdo, vw, vh, 1.5);
+                    const cajaDer = calcularCajaCuadrada(lm, indicesOjoDerecho, vw, vh, 1.5);
+                    const cajaBoca = calcularCajaCuadrada(lm, indicesBoca, vw, vh, 1.3);
+
+                    ctxOverlay.strokeStyle = "#dc3545";
+                    ctxOverlay.lineWidth = 2;
+                    ctxOverlay.strokeRect(cajaRostro.sx, cajaRostro.sy, cajaRostro.sw, cajaRostro.sh);
 
                     ctxOverlay.strokeStyle = cerradoPorParpado ? "#ff3355" : "#00ff88";
-                    ctxOverlay.lineWidth = 2;
                     ctxOverlay.strokeRect(cajaIzq.sx, cajaIzq.sy, cajaIzq.sw, cajaIzq.sh);
                     ctxOverlay.strokeRect(cajaDer.sx, cajaDer.sy, cajaDer.sw, cajaDer.sh);
 
-                    const modo = selectModoRecorte.value;
-                    if (modo === "ojo_derecho") {
-                        ultimaCajaRecorte = cajaDer;
-                    } else if (modo === "rostro") {
-                        ultimaCajaRecorte = cajaRostro;
-                    } else {
-                        ultimaCajaRecorte = cajaAmbos;
-                    }
-
-                    ctxOverlay.strokeStyle = "#0dcaf0";
-                    ctxOverlay.lineWidth = 2;
-                    ctxOverlay.strokeRect(
-                        ultimaCajaRecorte.sx,
-                        ultimaCajaRecorte.sy,
-                        ultimaCajaRecorte.sw,
-                        ultimaCajaRecorte.sh
+                    ctxOverlay.strokeStyle = bostezando ? "#ffc107" : "#0dcaf0";
+                    ctxOverlay.beginPath();
+                    ctxOverlay.ellipse(
+                        cajaBoca.sx + cajaBoca.sw / 2,
+                        cajaBoca.sy + cajaBoca.sh / 2,
+                        cajaBoca.sw / 2,
+                        cajaBoca.sh / 2.5,
+                        0, 0, 2 * Math.PI
                     );
+                    ctxOverlay.stroke();
 
+                    ctxCaptura.filter = chkLuzNocturna.checked ? "brightness(1.4) contrast(1.2)" : "none";
                     ctxCaptura.drawImage(
                         video,
-                        ultimaCajaRecorte.sx,
-                        ultimaCajaRecorte.sy,
-                        ultimaCajaRecorte.sw,
-                        ultimaCajaRecorte.sh,
+                        cajaRostro.sx,
+                        cajaRostro.sy,
+                        cajaRostro.sw,
+                        cajaRostro.sh,
                         0,
                         0,
                         canvasCaptura.width,
                         canvasCaptura.height
                     );
 
-                    txtRastreo.className = cerradoPorParpado
+                    txtRastreo.className = (cerradoPorParpado || bostezando)
                         ? "small text-danger fw-semibold d-block"
                         : "small text-success fw-semibold d-block";
                     txtRastreo.textContent = cerradoPorParpado
-                        ? "Parpado bajo el umbral (Cerrado)"
-                        : "Parpado sobre el umbral (Abierto normal)";
+                        ? "Alerta: Ojos cerrados detectados"
+                        : (bostezando ? "Alerta: Bostezo detectado (MAR alto)" : "Rostro completo activo (Nivel 0)");
                 } else {
-                    ultimaCajaRecorte = null;
+                    rostroDetectado = false;
                     txtRastreo.className = "small text-warning fw-semibold d-block";
                     txtRastreo.textContent = "Rostro no detectado en camara";
                 }
             }
-            animationFrameId = requestAnimationFrame(bucleSeguimientoOcular);
-        }
-
-        async function listarCamaras() {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
-            try {
-                const dispositivos = await navigator.mediaDevices.enumerateDevices();
-                const camaras = dispositivos.filter(d => d.kind === "videoinput");
-                const seleccionPrevia = selectCamara.value;
-                selectCamara.innerHTML = '<option value="">Camara Frontal (Predeterminada)</option>';
-                camaras.forEach((cam, idx) => {
-                    const opt = document.createElement("option");
-                    opt.value = cam.deviceId;
-                    opt.textContent = cam.label || `Camara ${idx + 1}`;
-                    selectCamara.appendChild(opt);
-                });
-                if (seleccionPrevia) selectCamara.value = seleccionPrevia;
-            } catch (e) {
-                console.error(e);
-            }
+            animationFrameId = requestAnimationFrame(bucleSeguimientoRostroCompleto);
         }
 
         function emitirAlarmaSonora() {
@@ -342,129 +781,284 @@
             oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
             oscillator.connect(audioCtx.destination);
             oscillator.start();
-            oscillator.stop(audioCtx.currentTime + 0.4);
+            oscillator.stop(audioCtx.currentTime + 0.45);
         }
 
-        async function cargarHistorial() {
-            try {
-                const resp = await fetch(`/api/v1/monitoreo/historial/${conductorId}`);
-                if (!resp.ok) return;
-                const datos = await resp.json();
-                tablaHistorial.innerHTML = datos.map(item => `
+        async function cargarHistorialPersonal() {
+            if (!sesionActual) return;
+            const resp = await fetch("/api/v1/monitoreo/historial/mio", {
+                headers: { "Authorization": `Bearer ${sesionActual.token}` }
+            });
+            if (!resp.ok) return;
+            const datos = await resp.json();
+            tablaHistorialConductor.innerHTML = datos.map(item => `
+                <tr>
+                    <td>${new Date(item.fechaRegistro).toLocaleString()}</td>
+                    <td><span class="badge bg-danger">${item.nivelSeveridad}</span></td>
+                    <td>${item.duracionCierreMs} ms</td>
+                    <td>${item.puntajeSomnolencia}</td>
+                </tr>
+            `).join("");
+        }
+
+        async function cargarHistorialFiltradoAdmin(conductor, severidad, horaIni, horaFin) {
+            if (!sesionActual || sesionActual.rol !== "Administrador") return;
+            const params = new URLSearchParams();
+            if (conductor) params.append("conductor", conductor);
+            if (severidad) params.append("severidad", severidad);
+            if (horaIni !== null) params.append("horaInicio", horaIni);
+            if (horaFin !== null) params.append("horaFin", horaFin);
+
+            const respHist = await fetch(`/api/v1/admin/historial?${params.toString()}`, {
+                headers: { "Authorization": `Bearer ${sesionActual.token}` }
+            });
+
+            if (respHist.ok) {
+                const lista = await respHist.json();
+                tablaHistorialGlobalAdmin.innerHTML = lista.map(item => `
                     <tr>
-                        <td>${new Date(item.fechaRegistro).toLocaleTimeString()}</td>
+                        <td class="fw-semibold">${item.nombreConductor}</td>
+                        <td>${new Date(item.fechaRegistro).toLocaleString()}</td>
                         <td><span class="badge bg-danger">${item.nivelSeveridad}</span></td>
                         <td>${item.duracionCierreMs} ms</td>
+                        <td>${item.valorEar.toFixed(2)} / ${item.valorMar.toFixed(2)}</td>
+                        <td>${item.puntajeSomnolencia}</td>
+                        <td class="text-end">
+                            <button class="btn btn-outline-danger btn-sm" data-eliminar-id="${item.eventoId}">Eliminar</button>
+                        </td>
                     </tr>
                 `).join("");
-            } catch (err) {
-                console.error(err);
+
+                tablaHistorialGlobalAdmin.querySelectorAll("[data-eliminar-id]").forEach(btn => {
+                    btn.addEventListener("click", async () => {
+                        const id = btn.getAttribute("data-eliminar-id");
+                        const delResp = await fetch(`/api/v1/admin/historial/${id}`, {
+                            method: "DELETE",
+                            headers: { "Authorization": `Bearer ${sesionActual.token}` }
+                        });
+                        if (delResp.ok) {
+                            await cargarDatosAdmin();
+                        }
+                    });
+                });
             }
         }
 
-        async function procesarBase64EnServidor(base64, estadoParpado) {
+        async function cargarDatosAdmin() {
+            if (!sesionActual || sesionActual.rol !== "Administrador") return;
+
+            const [respDash, respMetricas, respLogs] = await Promise.all([
+                fetch("/api/v1/admin/dashboard", { headers: { "Authorization": `Bearer ${sesionActual.token}` } }),
+                fetch("/api/v2/admin/metricas-modelo", { headers: { "Authorization": `Bearer ${sesionActual.token}` } }),
+                fetch("/api/v1/admin/audit-logs", { headers: { "Authorization": `Bearer ${sesionActual.token}` } })
+            ]);
+
+            if (respDash.ok) {
+                const dash = await respDash.json();
+                document.getElementById("kpiTrabajadorCritico").textContent = dash.trabajadorConMasSomnolencia;
+                document.getElementById("kpiDetalleTrabajador").textContent =
+                    `${dash.incidentesTrabajadorCritico} micro-sueños (Promedio: ${dash.promedioMsTrabajadorCritico} ms)`;
+                document.getElementById("kpiFranjaCritica").textContent = dash.franjaHorariaMasCritica;
+                document.getElementById("kpiTotalIncidentes").textContent = dash.totalMicrosuenosRegistrados;
+
+                tablaResumenTrabajadores.innerHTML = dash.promedioPorTrabajador.map(t => `
+                    <tr>
+                        <td class="fw-semibold text-info">${t.nombreConductor}</td>
+                        <td>${t.totalIncidentes}</td>
+                        <td>${t.promedioDuracionMs} ms</td>
+                        <td>${t.maximoCierreMs} ms</td>
+                        <td>${t.promedioPuntaje}</td>
+                    </tr>
+                `).join("");
+
+                renderizarGraficasAdmin(dash.somnolenciaPorHora, dash.promedioPorTrabajador);
+            }
+
+            if (respMetricas.ok) {
+                const m = await respMetricas.json();
+                document.getElementById("valAccuracy").textContent = `${m.accuracyPorcentaje}%`;
+                document.getElementById("valPrecision").textContent = `${m.precisionPorcentaje}%`;
+                document.getElementById("valRecall").textContent = `${m.recallPorcentaje}%`;
+                document.getElementById("valTN").textContent = `${m.verdaderosNegativos} (TN)`;
+                document.getElementById("valFP").textContent = `${m.falsosPositivos} (FP)`;
+                document.getElementById("valFN").textContent = `${m.falsosNegativos} (FN)`;
+                document.getElementById("valTP").textContent = `${m.verdaderosPositivos} (TP)`;
+            }
+
+            if (respLogs.ok) {
+                const logs = await respLogs.json();
+                tablaAuditLogs.innerHTML = logs.map(l => `
+                    <tr>
+                        <td>${new Date(l.fechaEvento).toLocaleString()}</td>
+                        <td><span class="badge bg-info text-dark">${l.usuarioEjecutor}</span></td>
+                        <td>${l.accion}</td>
+                        <td>${l.detalle}</td>
+                    </tr>
+                `).join("");
+            }
+
+            await cargarHistorialFiltradoAdmin(null, null, null, null);
+        }
+
+        function renderizarGraficasAdmin(datosHora, datosTrabajador) {
+            const ctxHora = document.getElementById("chartPorHora").getContext("2d");
+            if (chartHoraInstance) chartHoraInstance.destroy();
+            chartHoraInstance = new Chart(ctxHora, {
+                type: "bar",
+                data: {
+                    labels: datosHora.map(h => h.etiquetaHora),
+                    datasets: [{
+                        label: "Micro-sueños por hora del dia",
+                        data: datosHora.map(h => h.cantidadIncidentes),
+                        backgroundColor: "rgba(13, 202, 240, 0.65)",
+                        borderColor: "#0dcaf0",
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true, ticks: { color: "#e9ecef", stepSize: 1 } },
+                        x: { ticks: { color: "#e9ecef" } }
+                    },
+                    plugins: { legend: { labels: { color: "#e9ecef" } } }
+                }
+            });
+
+            const ctxTrab = document.getElementById("chartPorTrabajador").getContext("2d");
+            if (chartTrabajadorInstance) chartTrabajadorInstance.destroy();
+            chartTrabajadorInstance = new Chart(ctxTrab, {
+                type: "bar",
+                data: {
+                    labels: datosTrabajador.map(t => t.nombreConductor),
+                    datasets: [{
+                        label: "Promedio de somnolencia (ms)",
+                        data: datosTrabajador.map(t => t.promedioDuracionMs),
+                        backgroundColor: "rgba(255, 193, 7, 0.7)",
+                        borderColor: "#ffc107",
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true, ticks: { color: "#e9ecef" } },
+                        x: { ticks: { color: "#e9ecef" } }
+                    },
+                    plugins: { legend: { labels: { color: "#e9ecef" } } }
+                }
+            });
+        }
+
+        async function enviarFotogramaCamara() {
+            if (!video.videoWidth || !video.videoHeight || !sesionActual) return;
+
+            if (!rostroDetectado && faceLandmarker) {
+                txtEstadoOcular.className = "fw-bold text-warning";
+                txtEstadoOcular.textContent = "Buscando rostro del conductor...";
+                return;
+            }
+
+            const umbralEar = parseFloat(sliderUmbral.value);
+            const ojosCerrados = earPromedioActual < umbralEar;
+            const bostezoActivo = marActual >= 0.60;
+
+            if (ojosCerrados || bostezoActivo) {
+                closedScore += 5;
+            } else {
+                closedScore = Math.max(0, closedScore - 2);
+            }
+
+            if (bostezoActivo) {
+                duracionBostezoMs += intervaloMs;
+            } else {
+                duracionBostezoMs = 0;
+            }
+
+            txtScoreActual.textContent = closedScore;
+            txtDuracionBostezo.textContent = `${duracionBostezoMs} ms`;
+
+            const estadoParpado = (ojosCerrados || duracionBostezoMs >= 2000)
+                ? "CERRADO_PARPADO"
+                : "ABIERTO_PARPADO";
+
+            const base64 = canvasCaptura.toDataURL("image/jpeg", 0.90);
+
             const payload = {
-                conductorId: conductorId,
+                conductorId: sesionActual.usuarioId,
+                nombreConductor: sesionActual.nombreCompleto,
                 estadoOcularDetectado: estadoParpado,
                 duracionCierreMs: intervaloMs,
                 confianzaModeloLocal: earPromedioActual,
+                valorEar: earPromedioActual,
+                valorMar: marActual,
+                puntajeSomnolencia: closedScore,
                 fotogramaBase64: base64
             };
 
             try {
                 const respuesta = await fetch("/api/v1/monitoreo/evaluar", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${sesionActual.token}`
+                    },
                     body: JSON.stringify(payload)
                 });
 
-                const textoRespuesta = await respuesta.text();
-                let jsonRespuesta = null;
-                try {
-                    jsonRespuesta = JSON.parse(textoRespuesta);
-                } catch {
-                    jsonRespuesta = { detalle: textoRespuesta };
-                }
-
-                if (!respuesta.ok) {
-                    txtEstadoOcular.className = "fw-bold text-warning";
-                    txtEstadoOcular.textContent = `Error HTTP ${respuesta.status}`;
-                    cajaDiagnostico.className = "alert alert-warning mt-3 mb-0 small";
-                    cajaDiagnostico.textContent = jsonRespuesta.detalle || jsonRespuesta.mensaje || textoRespuesta;
-                    return;
-                }
-
+                if (!respuesta.ok) return;
+                const jsonRespuesta = await respuesta.json();
                 const info = jsonRespuesta.datos;
+
                 badgeEstado.className = "badge bg-success";
                 badgeEstado.textContent = "Monitoreando";
                 txtEstadoOcular.textContent = `Estado: ${info.nivelSeveridad}`;
                 txtDuracion.textContent = `${info.duracionCierreMs} ms`;
 
-                if (info.duracionCierreMs >= 1500) {
+                if (info.duracionCierreMs >= 1500 || duracionBostezoMs >= 2000) {
                     txtEstadoOcular.className = "fw-bold text-danger";
                     cajaDiagnostico.className = "alert alert-danger mt-3 mb-0 small";
-                    cajaDiagnostico.textContent = info.diagnosticoGoogleAI || "Alerta critica de somnolencia detectada.";
+                    cajaDiagnostico.textContent = info.diagnosticoGoogleAI || "Alerta Nivel 1: Peligro de sueño al volante.";
                     emitirAlarmaSonora();
-                    await cargarHistorial();
+                    await cargarHistorialPersonal();
                 } else {
                     txtEstadoOcular.className = "fw-bold text-success";
                     cajaDiagnostico.className = "alert alert-dark border-success mt-3 mb-0 small";
-                    cajaDiagnostico.textContent = `Monitoreo activo (${new Date().toLocaleTimeString()}) - Apertura EAR: ${earPromedioActual.toFixed(2)}`;
+                    cajaDiagnostico.textContent = `Conduccion segura (${new Date().toLocaleTimeString()}) | EAR: ${earPromedioActual.toFixed(2)} | MAR: ${marActual.toFixed(2)}`;
                 }
-            } catch (errorRed) {
-                txtEstadoOcular.className = "fw-bold text-danger";
-                txtEstadoOcular.textContent = "Error de Red";
-                cajaDiagnostico.className = "alert alert-danger mt-3 mb-0 small";
-                cajaDiagnostico.textContent = `No se pudo conectar con la API: ${errorRed.message}`;
+            } catch (err) {
+                console.error(err);
             }
         }
 
-        async function enviarFotogramaCamara() {
-            if (!video.videoWidth || !video.videoHeight) return;
-
-            if (!ultimaCajaRecorte && faceLandmarker) {
-                txtEstadoOcular.className = "fw-bold text-warning";
-                txtEstadoOcular.textContent = "Buscando rostro en camara...";
-                return;
+        async function listarCamaras() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+            try {
+                const dispositivos = await navigator.mediaDevices.enumerateDevices();
+                const camaras = dispositivos.filter(d => d.kind === "videoinput");
+                selectCamara.innerHTML = '<option value="">Camara Frontal (Predeterminada)</option>';
+                camaras.forEach((cam, idx) => {
+                    const opt = document.createElement("option");
+                    opt.value = cam.deviceId;
+                    opt.textContent = cam.label || `Camara ${idx + 1}`;
+                    selectCamara.appendChild(opt);
+                });
+            } catch (e) {
+                console.error(e);
             }
-
-            let estadoParpado = "PENDIENTE";
-            if (faceLandmarker) {
-                const umbral = parseFloat(sliderUmbral.value);
-                estadoParpado = earPromedioActual < umbral ? "CERRADO_PARPADO" : "ABIERTO_PARPADO";
-            } else {
-                ctxCaptura.drawImage(video, 0, 0, canvasCaptura.width, canvasCaptura.height);
-            }
-
-            const base64 = canvasCaptura.toDataURL("image/jpeg", 0.90);
-            await procesarBase64EnServidor(base64, estadoParpado);
         }
 
         btnIniciar.addEventListener("click", async () => {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                const urlHttps = `https://${window.location.hostname}:5001`;
-                txtEstadoOcular.className = "fw-bold text-warning";
-                txtEstadoOcular.textContent = "Requiere conexion HTTPS en celular";
-                cajaDiagnostico.className = "alert alert-warning mt-3 mb-0 small";
-                cajaDiagnostico.innerHTML = `En telefonos el navegador exige HTTPS para encender la camara. <a href="${urlHttps}" class="alert-link">Toca aqui para abrir ${urlHttps}</a>.`;
-                return;
-            }
-
             try {
                 if (video.srcObject) {
                     video.srcObject.getTracks().forEach(t => t.stop());
                 }
 
-                let stream;
-                try {
-                    const constraints = selectCamara.value
-                        ? { video: { deviceId: { exact: selectCamara.value } }, audio: false }
-                        : { video: { facingMode: "user" }, audio: false };
-                    stream = await navigator.mediaDevices.getUserMedia(constraints);
-                } catch {
-                    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                }
+                const constraints = selectCamara.value
+                    ? { video: { deviceId: { exact: selectCamara.value } }, audio: false }
+                    : { video: { facingMode: "user" }, audio: false };
 
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
                 await video.play();
                 await listarCamaras();
@@ -473,18 +1067,12 @@
                 btnCalibrar.disabled = false;
                 btnDetener.disabled = false;
 
-                txtEstadoOcular.className = "fw-bold text-info";
-                txtEstadoOcular.textContent = "Activando rastreador de ojos...";
                 await asegurarRastreadorMediaPipe();
-                await cargarHistorial();
-
-                bucleSeguimientoOcular();
+                bucleSeguimientoRostroCompleto();
                 timerMonitoreo = setInterval(enviarFotogramaCamara, intervaloMs);
             } catch (errCamara) {
                 txtEstadoOcular.className = "fw-bold text-danger";
                 txtEstadoOcular.textContent = "No se pudo abrir la camara";
-                cajaDiagnostico.className = "alert alert-danger mt-3 mb-0 small";
-                cajaDiagnostico.textContent = `Detalle del dispositivo: ${errCamara.name} - ${errCamara.message}`;
             }
         });
 

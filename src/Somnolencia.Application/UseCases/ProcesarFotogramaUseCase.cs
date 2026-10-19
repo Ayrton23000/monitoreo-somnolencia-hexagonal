@@ -5,6 +5,7 @@ using System.Linq.Expressions;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using AutoMapper;
 using FluentValidation;
 using Somnolencia.Application.DTOs;
 using Somnolencia.Application.Ports.In;
@@ -30,19 +31,22 @@ public sealed class ProcesarFotogramaUseCase : IProcesarFotogramaUseCase
     private readonly IEventoFatigaRepositoryPort _repositorio;
     private readonly ICacheEstadoOcularPort _cache;
     private readonly IValidator<TelemetriaOcularEntradaDto> _validador;
+    private readonly IMapper _mapper;
 
     public ProcesarFotogramaUseCase(
         IDetectorOcularPort detectorOcular,
         IAnalizadorSomnolenciaIAPort analizadorIA,
         IEventoFatigaRepositoryPort repositorio,
         ICacheEstadoOcularPort cache,
-        IValidator<TelemetriaOcularEntradaDto> validador)
+        IValidator<TelemetriaOcularEntradaDto> validador,
+        IMapper mapper)
     {
         _detectorOcular = detectorOcular;
         _analizadorIA = analizadorIA;
         _repositorio = repositorio;
         _cache = cache;
         _validador = validador;
+        _mapper = mapper;
     }
 
     public async Task<AlertaSomnolenciaRespuestaDto> EjecutarAsync(
@@ -84,8 +88,12 @@ public sealed class ProcesarFotogramaUseCase : IProcesarFotogramaUseCase
 
         var evento = new EventoCierreOcular(
             entrada.ConductorId,
+            entrada.NombreConductor,
             duracionAcumuladaMs,
-            inferencia.Confianza
+            inferencia.Confianza,
+            entrada.ValorEar,
+            entrada.ValorMar,
+            entrada.PuntajeSomnolencia
         );
 
         if (evento.RequiereAuditoriaContextual())
@@ -101,12 +109,22 @@ public sealed class ProcesarFotogramaUseCase : IProcesarFotogramaUseCase
             }
             catch
             {
-                evento.AsignarDiagnosticoIA("Alerta local confirmada por TensorFlow. Diagnostico externo diferido por Circuit Breaker.");
+                evento.AsignarDiagnosticoIA($"Alerta Nivel 1 confirmada (EAR: {entrada.ValorEar:F2}, MAR: {entrada.ValorMar:F2}, Score: {entrada.PuntajeSomnolencia}).");
             }
 
             var outbox = new OutboxMessage(
                 "ALERTA_SOMNOLENCIA_DETECTADA",
-                JsonSerializer.Serialize(new { evento.Id, evento.ConductorId, evento.NivelSeveridad, duracionAcumuladaMs })
+                JsonSerializer.Serialize(new
+                {
+                    evento.Id,
+                    evento.ConductorId,
+                    evento.NombreConductor,
+                    evento.NivelSeveridad,
+                    duracionAcumuladaMs,
+                    entrada.ValorEar,
+                    entrada.ValorMar,
+                    entrada.PuntajeSomnolencia
+                })
             );
 
             await _repositorio.RegistrarConOutboxAsync(evento, outbox, cancellationToken);
@@ -115,14 +133,18 @@ public sealed class ProcesarFotogramaUseCase : IProcesarFotogramaUseCase
         return new AlertaSomnolenciaRespuestaDto(
             evento.Id,
             evento.ConductorId,
+            evento.NombreConductor,
             $"{etiquetaEstado} - {evento.NivelSeveridad}",
             duracionAcumuladaMs,
+            evento.ValorEar,
+            evento.ValorMar,
+            evento.PuntajeSomnolencia,
             evento.DiagnosticoContextualIA,
             evento.FechaRegistro
         );
     }
 
-    public async Task<IReadOnlyList<AlertaSomnolenciaRespuestaDto>> ObtenerHistorialCriticoAsync(
+    public async Task<IReadOnlyList<AlertaSomnolenciaRespuestaDto>> ObtenerHistorialConductorAsync(
         Guid conductorId,
         CancellationToken cancellationToken = default)
     {
@@ -130,14 +152,45 @@ public sealed class ProcesarFotogramaUseCase : IProcesarFotogramaUseCase
         var eventos = await _repositorio.ConsultarPorEspecificacionAsync(spec, cancellationToken);
 
         return eventos.OfType<EventoCierreOcular>()
-            .Select(e => new AlertaSomnolenciaRespuestaDto(
-                e.Id,
-                e.ConductorId,
-                e.NivelSeveridad,
-                e.DuracionCierreMs,
-                e.DiagnosticoContextualIA,
-                e.FechaRegistro
-            ))
+            .Select(e => _mapper.Map<AlertaSomnolenciaRespuestaDto>(e))
             .ToList();
+    }
+
+    public async Task<IReadOnlyList<AlertaSomnolenciaRespuestaDto>> ObtenerHistorialGlobalAdminAsync(
+        string? filtroConductor = null,
+        string? filtroSeveridad = null,
+        int? horaInicio = null,
+        int? horaFin = null,
+        CancellationToken cancellationToken = default)
+    {
+        var eventos = await _repositorio.ObtenerTodoElHistorialAsync(
+            filtroConductor,
+            filtroSeveridad,
+            horaInicio,
+            horaFin,
+            cancellationToken
+        );
+
+        return eventos.Select(e => _mapper.Map<AlertaSomnolenciaRespuestaDto>(e)).ToList();
+    }
+
+    public async Task<bool> EliminarRegistroAdminAsync(
+        Guid eventoId,
+        string usuarioAdmin,
+        CancellationToken cancellationToken = default)
+    {
+        return await _repositorio.EliminarEventoAsync(eventoId, usuarioAdmin, cancellationToken);
+    }
+
+    public async Task<DashboardAdminDto> ObtenerDashboardAdminAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return await _repositorio.ObtenerEstadisticasDashboardAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<AuditLogDto>> ObtenerAuditLogsAdminAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return await _repositorio.ObtenerAuditLogsAsync(cancellationToken);
     }
 }
